@@ -1,4 +1,4 @@
-from api import *
+from apis import *
 
 
 def social_media():

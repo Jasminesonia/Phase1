@@ -19,8 +19,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 # Include the router
-app.include_router(auth_router, prefix="/api",tags=["Authentication"])
-app.include_router(social_router, prefix="/api",tags=["post"])
+app.include_router(auth_router, prefix="api",tags=["Authentication"])
+app.include_router(social_router, prefix="api",tags=["post"])
 
 
 @app.get("/")

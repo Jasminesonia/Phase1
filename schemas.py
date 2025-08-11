@@ -1,8 +1,9 @@
-from pydantic import BaseModel, constr
 from typing import Optional
+from pydantic import BaseModel, constr
 
 
 class SocialMediaRequest(BaseModel):
+    user_id: str
     caption: str
     base64_image: str  # Base64-encoded image string
 
@@ -43,8 +44,6 @@ class UpdatePasswordSchema(BaseModel):
     passwordConfirm: str
 
 
-#schemas.py
-
 class InstaCredentials(BaseModel):
     user_id: str
     ACCESS_TOKENS: Optional[str]
@@ -61,7 +60,6 @@ class TenantData(BaseModel):
     user_id: str
     insta_credentials: InstaCredentials
     facebook_credentials: FacebookCredentials
-
 
 
 

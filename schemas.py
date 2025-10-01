@@ -1,5 +1,9 @@
 from typing import Optional
 from pydantic import BaseModel, constr
+from datetime import datetime
+
+class GoogleLoginSchema(BaseModel):
+    token: str  # Google OAuth ID Token
 
 
 class SocialMediaRequest(BaseModel):

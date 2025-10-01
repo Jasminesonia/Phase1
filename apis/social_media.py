@@ -429,3 +429,164 @@ async def upload_image(payload: SocialMediaRequest):
 #
 #     except Exception as e:
 #         raise HTTPException(status_code=500, detail=f"Operation failed: {str(e)}")
+
+
+# @router.post("/save-instagram-credentials/")
+# async def save_instagram_credentials(data: InstaCredentials):
+#     try:
+#         # Example: You might receive expiry_timestamp from request (seconds or datetime)
+#         expiry_timestamp = data.expiry_timestamp  # <-- Add this field in InstaCredentials schema
+
+#         # Convert expiry_timestamp into datetime if it's in seconds
+#         if isinstance(expiry_timestamp, (int, float, str)):
+#             try:
+#                 expiry_timestamp = datetime.fromtimestamp(int(expiry_timestamp))
+#             except Exception:
+#                 raise HTTPException(status_code=400, detail="Invalid expiry_timestamp format")
+
+#         # Check if document exists for this user
+#         existing = await tenant_collection.find_one({"user_id": ObjectId(data.user_id)})
+#         if existing:
+#             # Update only Instagram credentials
+#             await tenant_collection.update_one(
+#                 {"user_id": ObjectId(data.user_id)},
+#                 {"$set": {
+#                     "insta_credentials": {
+#                         "ACCESS_TOKENS": data.ACCESS_TOKENS,
+#                         "IG_USER_ID": data.IG_USER_ID,
+#                         "EXPIRY_TIMESTAMP": expiry_timestamp
+#                     }
+#                 }}
+#             )
+#             updated = await tenant_collection.find_one({"user_id": ObjectId(data.user_id)})
+#             updated["_id"] = str(updated["_id"])
+#             updated["user_id"] = str(updated["user_id"])
+#             return {"message": "Instagram credentials updated successfully", "data": updated}
+#         else:
+#             # Create new document with Instagram credentials
+#             document = {
+#                 "user_id": ObjectId(data.user_id),
+#                 "insta_credentials": {
+#                     "ACCESS_TOKENS": data.ACCESS_TOKENS,
+#                     "IG_USER_ID": data.IG_USER_ID,
+#                     "EXPIRY_TIMESTAMP": expiry_timestamp
+#                 },
+#                 "created_at": datetime.utcnow()
+#             }
+#             result = await tenant_collection.insert_one(document)
+#             document["_id"] = str(result.inserted_id)
+#             document["user_id"] = str(document["user_id"])
+#             return {"message": "Instagram credentials saved", "data": document}
+
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
+import os
+import httpx
+from fastapi import APIRouter, HTTPException
+from bson import ObjectId
+from database.mongo import get_collection
+
+router = APIRouter()
+tenant_collection = get_collection("tenant")
+
+FACEBOOK_APP_ID = os.getenv("FACEBOOK_APP_ID")
+FACEBOOK_APP_SECRET = os.getenv("FACEBOOK_APP_SECRET")
+FACEBOOK_GRAPH_API = "https://graph.facebook.com/v17.0"
+INSTAGRAM_GRAPH_API = "https://graph.instagram.com"
+
+
+@router.get("/get-instagram-credentials/{user_id}")
+async def get_instagram_credentials(user_id: str):
+    try:
+        existing = await tenant_collection.find_one({"user_id": ObjectId(user_id)})
+        if not existing:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        insta_credentials = existing.get("insta_credentials")
+        if not insta_credentials:
+            raise HTTPException(status_code=404, detail="Instagram credentials not found")
+
+        return {
+            "user_id": str(existing["user_id"]),
+            "insta_credentials": insta_credentials
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/update-instagram-token/{user_id}")
+async def update_instagram_token(user_id: str):
+    try:
+        existing = await tenant_collection.find_one({"user_id": ObjectId(user_id)})
+        if not existing:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        insta_credentials = existing.get("insta_credentials")
+        if not insta_credentials:
+            raise HTTPException(status_code=404, detail="Instagram credentials not found")
+
+        access_token = insta_credentials.get("access_token")
+        token_type = insta_credentials.get("token_type", "short_lived")
+
+        async with httpx.AsyncClient() as client:
+            if token_type == "short_lived":
+                # Exchange short-lived → long-lived
+                exchange_resp = await client.get(
+                    f"{FACEBOOK_GRAPH_API}/oauth/access_token",
+                    params={
+                        "grant_type": "fb_exchange_token",
+                        "client_id": FACEBOOK_APP_ID,
+                        "client_secret": FACEBOOK_APP_SECRET,
+                        "fb_exchange_token": access_token,
+                    }
+                )
+                if exchange_resp.status_code != 200:
+                    raise HTTPException(status_code=400, detail=f"Exchange failed: {exchange_resp.text}")
+
+                data = exchange_resp.json()
+                new_token = data.get("access_token")
+                expires_in = data.get("expires_in")
+
+                await tenant_collection.update_one(
+                    {"user_id": ObjectId(user_id)},
+                    {"$set": {
+                        "insta_credentials.access_token": new_token,
+                        "insta_credentials.token_type": "long_lived",
+                        "insta_credentials.expires_in": expires_in
+                    }}
+                )
+                return {"message": "Exchanged to long-lived token", "access_token": new_token, "expires_in": expires_in}
+
+            elif token_type == "long_lived":
+                # Refresh long-lived token
+                refresh_resp = await client.get(
+                    f"{INSTAGRAM_GRAPH_API}/refresh_access_token",
+                    params={
+                        "grant_type": "ig_refresh_token",
+                        "access_token": access_token,
+                    }
+                )
+                if refresh_resp.status_code != 200:
+                    raise HTTPException(status_code=400, detail=f"Refresh failed: {refresh_resp.text}")
+
+                data = refresh_resp.json()
+                new_token = data.get("access_token")
+                expires_in = data.get("expires_in")
+
+                await tenant_collection.update_one(
+                    {"user_id": ObjectId(user_id)},
+                    {"$set": {
+                        "insta_credentials.access_token": new_token,
+                        "insta_credentials.token_type": "long_lived",
+                        "insta_credentials.expires_in": expires_in
+                    }}
+                )
+                return {"message": "Refreshed long-lived token", "access_token": new_token, "expires_in": expires_in}
+
+            else:
+                raise HTTPException(status_code=400, detail="Unknown token_type")
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+

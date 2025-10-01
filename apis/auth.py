@@ -9,15 +9,90 @@ from config import settings
 from database.mongo import get_collection
 from emailsetup.verifyEmail import ForgotPassEmail
 from schemas import UserSignupSchema, UserSigninSchema, ForgotPasswordSchema, ResetPasswordSchema, \
-    UpdatePasswordSchema, VerifyOTPSchema
+    UpdatePasswordSchema, VerifyOTPSchema, GoogleLoginSchema
 from utils import hash_password, verify_password
 from jwt_config import get_jwt_config
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
+from fastapi import Depends
+from schemas import GoogleLoginSchema
+import traceback
+
 
 router = APIRouter()
 Users = get_collection("users_info")
 
 ACCESS_TOKEN_EXPIRES_IN = int(os.getenv("ACCESS_TOKEN_EXPIRES_IN", 30))
 REFRESH_TOKEN_EXPIRES_IN = int(os.getenv("REFRESH_TOKEN_EXPIRES_IN", 1440))  # default: 1 day
+
+
+@router.post("/auth/google")
+async def google_login(payload: GoogleLoginSchema, Authorize: AuthJWT = Depends()):
+    try:
+        # Verify Google ID token
+        idinfo = id_token.verify_oauth2_token(
+            payload.token,
+            google_requests.Request(),
+            os.getenv("GOOGLE_CLIENT_ID")
+        )
+
+        email = idinfo.get("email")
+        name = idinfo.get("name")
+        picture = idinfo.get("picture")
+        sub = idinfo.get("sub")
+
+        if not email:
+            raise HTTPException(status_code=400, detail="Google account does not have an email")
+
+        # Check if user exists
+        db_user = await Users.find_one({"email": email})
+
+        if not db_user:
+            # Create a new user
+            new_user = {
+                "email": email,
+                "name": name,
+                "google_id": sub,
+                "picture": picture,
+                "role": "user",
+                "verified": True,
+                "status": "active",
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+            }
+            result = await Users.insert_one(new_user)
+            user_id = str(result.inserted_id)
+            db_user = {**new_user, "_id": result.inserted_id}
+        else:
+            user_id = str(db_user["_id"])
+
+        # Create access & refresh tokens
+        access_token = Authorize.create_access_token(
+            subject=user_id,
+            expires_time=timedelta(minutes=ACCESS_TOKEN_EXPIRES_IN),
+        )
+        refresh_token = Authorize.create_refresh_token(
+            subject=user_id,
+            expires_time=timedelta(minutes=REFRESH_TOKEN_EXPIRES_IN),
+        )
+
+        return {
+            "status": "success",
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "user_id": user_id,
+            "email": email,
+            "name": db_user.get("name", name),
+            "picture": db_user.get("picture", picture),
+            "role": db_user.get("role", "user"),
+            "verified": db_user.get("verified", True)
+        }
+
+    except Exception as e:
+        print("Google login error:", str(e))
+        traceback.print_exc()
+        raise HTTPException(status_code=401, detail=f"Google auth failed: {str(e)}")
+
 
 
 @router.post("/signup")

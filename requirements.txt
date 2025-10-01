@@ -183,3 +183,4 @@ websocket-client==1.8.0
 Werkzeug==3.0.1
 widgetsnbextension==4.0.14
 zipp==3.23.0
+google-auth==2.41.1

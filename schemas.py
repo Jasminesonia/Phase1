@@ -65,5 +65,8 @@ class TenantData(BaseModel):
     insta_credentials: InstaCredentials
     facebook_credentials: FacebookCredentials
 
-
+class SocialMediaVideoRequest(BaseModel):
+    user_id: str
+    caption: str
+    base64_video: str
 

@@ -13,6 +13,7 @@ from schemas import SocialMediaRequest, TenantData, InstaCredentials, FacebookCr
 from datetime import datetime, timedelta
 from schemas import SocialMediaRequest, TenantData, InstaCredentials, FacebookCredentials,SocialMediaVideoRequest
 import asyncio
+import io
 
 # Environment Variables
 cloudinary.config(

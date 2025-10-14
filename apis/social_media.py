@@ -416,96 +416,96 @@ async def upload_image(payload: SocialMediaRequest):
         raise HTTPException(status_code=500, detail=f"Operation failed: {str(e)}")
 
 
-# @router.post("/upload-socialmedia/")
-# async def upload_image(payload: SocialMediaRequest):
-#     try:
-#         # Step 1: Fetch credentials from tenant collection
-#         try:
-#             user_obj_id = ObjectId(payload.user_id)
-#         except Exception:
-#             raise HTTPException(status_code=400, detail="Invalid user_id format")
+@router.post("/upload-socialmedia/")
+async def upload_image(payload: SocialMediaRequest):
+    try:
+        # Step 1: Fetch credentials from tenant collection
+        try:
+            user_obj_id = ObjectId(payload.user_id)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid user_id format")
 
-#         tenant = await tenant_collection.find_one({"user_id": user_obj_id})
-#         if not tenant:
-#             raise HTTPException(status_code=404, detail="Credentials for this user not found")
+        tenant = await tenant_collection.find_one({"user_id": user_obj_id})
+        if not tenant:
+            raise HTTPException(status_code=404, detail="Credentials for this user not found")
 
-#         insta_creds = tenant.get("insta_credentials", {})
-#         fb_creds = tenant.get("facebook_credentials", {})
+        insta_creds = tenant.get("insta_credentials", {})
+        fb_creds = tenant.get("facebook_credentials", {})
 
-#         IG_USER_ID = insta_creds.get("IG_USER_ID")
-#         ACCESS_TOKENS = insta_creds.get("ACCESS_TOKENS")
-#         PAGE_ID = fb_creds.get("PAGE_ID")
-#         FACEBOOK_ACCESS = fb_creds.get("FACEBOOK_ACCESS")
+        IG_USER_ID = insta_creds.get("IG_USER_ID")
+        ACCESS_TOKENS = insta_creds.get("ACCESS_TOKENS")
+        PAGE_ID = fb_creds.get("PAGE_ID")
+        FACEBOOK_ACCESS = fb_creds.get("FACEBOOK_ACCESS")
 
-#         # Step 2: Decode base64 image
-#         try:
-#             image_data = base64.b64decode(payload.base64_image)
-#         except Exception:
-#             raise HTTPException(status_code=400, detail="Invalid base64 image data")
+        # Step 2: Decode base64 image
+        try:
+            image_data = base64.b64decode(payload.base64_image)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid base64 image data")
 
-#         image_file = BytesIO(image_data)
+        image_file = BytesIO(image_data)
 
-#         # Step 3: Upload to Cloudinary
-#         result = cloudinary.uploader.upload(image_file)
-#         result["uploaded_at"] = datetime.utcnow()
-#         image_url = result.get("secure_url")
-#         if not image_url:
-#             raise HTTPException(status_code=500, detail="Image URL not returned from Cloudinary")
+        # Step 3: Upload to Cloudinary
+        result = cloudinary.uploader.upload(image_file)
+        result["uploaded_at"] = datetime.utcnow()
+        image_url = result.get("secure_url")
+        if not image_url:
+            raise HTTPException(status_code=500, detail="Image URL not returned from Cloudinary")
 
-#         insta_response, fb_response = None, None
+        insta_response, fb_response = None, None
 
-#         # Step 4: Post to Instagram if creds exist
-#         if IG_USER_ID and ACCESS_TOKENS:
-#             container_url = f"https://graph.facebook.com/v23.0/{IG_USER_ID}/media"
+        # Step 4: Post to Instagram if creds exist
+        if IG_USER_ID and ACCESS_TOKENS:
+            container_url = f"https://graph.facebook.com/v23.0/{IG_USER_ID}/media"
 
-#             container_payload = {
-#                 "image_url": image_url,
-#                 "caption": payload.caption,
-#                 "access_token": ACCESS_TOKENS
-#             }
-#             container_res = requests.post(container_url, data=container_payload).json()
+            container_payload = {
+                "image_url": image_url,
+                "caption": payload.caption,
+                "access_token": ACCESS_TOKENS
+            }
+            container_res = requests.post(container_url, data=container_payload).json()
 
-#             if 'id' not in container_res:
-#                 raise HTTPException(status_code=400, detail=f"Instagram media creation failed: {container_res}")
+            if 'id' not in container_res:
+                raise HTTPException(status_code=400, detail=f"Instagram media creation failed: {container_res}")
 
-#             publish_url = f"https://graph.facebook.com/v23.0/{IG_USER_ID}/media_publish"
-#             publish_payload = {
-#                 "creation_id": container_res['id'],
-#                 "access_token": ACCESS_TOKENS
-#             }
-#             insta_response = requests.post(publish_url, data=publish_payload).json()
+            publish_url = f"https://graph.facebook.com/v23.0/{IG_USER_ID}/media_publish"
+            publish_payload = {
+                "creation_id": container_res['id'],
+                "access_token": ACCESS_TOKENS
+            }
+            insta_response = requests.post(publish_url, data=publish_payload).json()
 
-#         # Step 5: Post to Facebook if creds exist
-#         if PAGE_ID and FACEBOOK_ACCESS:
-#             fb_url = f"https://graph.facebook.com/v23.0/{PAGE_ID}/photos"
-#             fb_payload = {
-#                 "url": image_url,
-#                 "caption": payload.caption,
-#                 "access_token": FACEBOOK_ACCESS
-#             }
-#             fb_response = requests.post(fb_url, data=fb_payload).json()
+        # Step 5: Post to Facebook if creds exist
+        if PAGE_ID and FACEBOOK_ACCESS:
+            fb_url = f"https://graph.facebook.com/v23.0/{PAGE_ID}/photos"
+            fb_payload = {
+                "url": image_url,
+                "caption": payload.caption,
+                "access_token": FACEBOOK_ACCESS
+            }
+            fb_response = requests.post(fb_url, data=fb_payload).json()
 
-#         # Step 6: Save to MongoDB
-#         full_record = {
-#             "user_id": user_obj_id,
-#             "caption": payload.caption,
-#             "uploaded_at": datetime.utcnow(),
-#             "cloudinary_response": result,
-#             "instagram_response": insta_response,
-#             "facebook_response": fb_response
-#         }
+        # Step 6: Save to MongoDB
+        full_record = {
+            "user_id": user_obj_id,
+            "caption": payload.caption,
+            "uploaded_at": datetime.utcnow(),
+            "cloudinary_response": result,
+            "instagram_response": insta_response,
+            "facebook_response": fb_response
+        }
 
-#         insert_result = await social_collection.insert_one(full_record)
-#         full_record["_id"] = str(insert_result.inserted_id)
-#         full_record["user_id"] = str(full_record["user_id"])
+        insert_result = await social_collection.insert_one(full_record)
+        full_record["_id"] = str(insert_result.inserted_id)
+        full_record["user_id"] = str(full_record["user_id"])
 
-#         return {
-#             "message": "Upload successful",
-#             "data": full_record
-#         }
+        return {
+            "message": "Upload successful",
+            "data": full_record
+        }
 
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=f"Operation failed: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Operation failed: {str(e)}")
 
 @router.post("/upload-video-socialmedia/")
 async def upload_video_file(payload: SocialMediaVideoRequest):
